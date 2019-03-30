@@ -1,9 +1,38 @@
 let _messageBusIdCounter = 0;
 
+class FunctionPointerLib {
+
+    constructor(size) {
+        this._functionPointerLib = {};
+        this._functionPointerLibTtlQueue = [];
+        this._maxFuncCount = size;
+    }
+
+    set maxFuncCount(maxFuncCount) {
+        this._maxFuncCount = maxFuncCount;
+    }
+
+    put(key, func) {
+        // Check to see if the lib is at capacity.
+        // If so, purge the oldest function pointer.
+        if (this._functionPointerLibTtlQueue.length === this._maxFuncCount) {
+            let funcKeyToDelete = this._functionPointerLibTtlQueue.shift();
+            delete this._functionPointerLib[funcKeyToDelete];
+        }
+
+        this._functionPointerLib[key] = func;
+        this._functionPointerLibTtlQueue.push(key);
+    }
+
+    get(key) {
+        return this._functionPointerLib[key];
+    }
+}
+
 class MessageBus {
 
     constructor() {
-        this._functionPointerLib = {};
+        this._functionPointerLib = new FunctionPointerLib(1000);
         this._functionPointerCounter = 0;
         this._createProxySubscriber();
         this._id = "MessageBus@" + _messageBusIdCounter;
@@ -18,11 +47,15 @@ class MessageBus {
         this._objSubscriber = objSubscriber;
     }
 
+    set functionPointerLibSize(size) {
+        this._functionPointerLib.maxFuncCount = size;
+    }
+
     _createProxySubscriber() {
         const subscriberHandler = {
             get: (obj, prop) => {
-                if (this._functionPointerLib[prop] != null) {
-                    return this._functionPointerLib[prop];
+                if (this._functionPointerLib.get(prop) != null) {
+                    return this._functionPointerLib.get(prop);
                 } else if (this._objSubscriber != null) {
                     return this._objSubscriber[prop];
                 } else {
@@ -212,7 +245,7 @@ class MessageBus {
             // store a pointer to the function in the function lib
             let functionPointerName = "f@" + this._functionPointerCounter;
             this._functionPointerCounter++;
-            this._functionPointerLib[functionPointerName] = arg;
+            this._functionPointerLib.put(functionPointerName, arg);
             return ({
                 type: "function",
                 name: functionPointerName

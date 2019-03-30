@@ -275,4 +275,28 @@ describe('Message Bus', function () {
      * library as a finite stack.  For example, a stack of 1000 function pointers max.
      * The oldest function pointers will be retired when the stack is full.
      */
+    it("stores only the specified number of function pointers", function () {
+        // create message buses
+        const bus1 = new MessageBus();
+        const bus2 = new MessageBus();
+
+        // connect message buses
+        bus1.send = inMemoryPublisherImpl(bus2);
+        bus2.send = inMemoryPublisherImpl(bus1);
+
+        bus2.subscriber = {
+            doSomething: function (cb) {
+                // we won't actually ever use the callback!
+            }
+        };
+
+        // send five thousand requests, each with a function pointer.
+        for (let i = 0; i < 5000; i++) {
+            bus1.publisher.doSomething(() => {});
+        }
+
+        // now check that there are only the max number of
+        // function pointers actually stored in the lib.
+        assert.equal(bus1._functionPointerLib._functionPointerLibTtlQueue.length, 1000);
+    })
 });

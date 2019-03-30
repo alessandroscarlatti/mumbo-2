@@ -1,2 +1,4 @@
 echo stuff
-timeout /t 10
+echo and
+echo things
+pause
