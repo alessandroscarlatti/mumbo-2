@@ -1,7 +1,22 @@
 var assert = require('assert');
-const {MessageBus, inMemoryPublisherImpl} = require("./messageBus");
-const mumbo = require("./mumbo");
-const SocketServer = mumbo.require('ws').Server;
+const MessageBus = require("./messageBus");
+
+/**
+ * This is an in-memory implementation.
+ * It directly invokes the other messageBus's event handling
+ * by directly calling MessageBus#onMessage.
+ */
+function inMemoryPublisherImpl(otherMessageBus) {
+    function send(message) {
+        // simulate network latency
+        setTimeout(() => {
+            console.log(this._id + " sending message", message);
+            otherMessageBus.receive(message);
+        }, 500);
+    }
+
+    return send;
+}
 
 describe('Message Bus', function () {
     it("invoke nullary function", function (done) {
@@ -194,4 +209,70 @@ describe('Message Bus', function () {
             });
         });
     });
+
+    /**
+     * This does not work yet!
+     * That's because the current manner of serializing an "object"
+     * is to use JSON.  This does not allow functions inside the object.
+     * It would be great to be able to pass named callbacks,
+     * especially for running asynchronous tasks.
+     * However, this will require rewriting the message bus
+     * serialization and deserialization to be recursive.
+     */
+    it("call function within an object param", function (done) {
+        // create message buses
+        const bus1 = new MessageBus();
+        const bus2 = new MessageBus();
+
+        // connect message buses
+        bus1.send = inMemoryPublisherImpl(bus2);
+        bus2.send = inMemoryPublisherImpl(bus1);
+
+        // set up subscription
+        bus2.subscriber = {
+            printlnThenCallback: function (paramsObj) {
+                console.log("println called.");
+                paramsObj.cb();
+            }
+        };
+
+        bus1.publisher.printlnThenCallback({
+            cb: () => {
+                console.log("called back!");
+                done();
+            }
+        })
+    });
+
+    it("call with an array", function (done) {
+        // create message buses
+        const bus1 = new MessageBus();
+        const bus2 = new MessageBus();
+
+        // connect message buses
+        bus1.send = inMemoryPublisherImpl(bus2);
+        bus2.send = inMemoryPublisherImpl(bus1);
+
+        // set up subscription
+        bus2.subscriber = {
+            doSomethingWithArray: function (arr) {
+                assert.equal(arr.constructor.name,  "Array");
+                assert.deepEqual(arr,  ["thing1", "thing2"]);
+                done();
+            }
+        };
+
+        bus1.publisher.doSomethingWithArray(["thing1", "thing2"])
+    });
+
+    /**
+     * TODO (3/30/2019)
+     * We also need a plan for re-implementing the function pointer library.
+     * Right now, it will store every function pointer forever.
+     * That is certainly not a good thing!
+     * Since JavaScript for Browser does not have the concept of first-class
+     * references, the best I can think of at the time is implementing the
+     * library as a finite stack.  For example, a stack of 1000 function pointers max.
+     * The oldest function pointers will be retired when the stack is full.
+     */
 });

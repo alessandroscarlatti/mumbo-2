@@ -17,7 +17,7 @@ const spawn = require('child_process').spawn;
 const mumbo = require("./mumbo");
 const SocketServer = mumbo.require('ws').Server;
 const express = mumbo.require('express');
-const {MessageBus} = require("./messageBus");
+const MessageBus = require("./messageBus");
 
 // https://gist.github.com/6174/6062387
 // http://stackoverflow.com/questions/105034/how-to-create-a-guid-uuid-in-javascript
@@ -44,7 +44,7 @@ server.on("listening", function () {
     const port = server.address().port;
     const url = `http://${hostname}:${port}?k=${SERVER_KEY}`;
     console.log(`Server started at ${url} on ${new Date()}`);
-    spawn("C:/Program Files (x86)/Google/Chrome/Application/chrome.exe", ["--window-size=500,500", `--app=${url}`], {
+    spawn("C:/Program Files (x86)/Google/Chrome/Application/chrome.exe", [url] /*["--window-size=500,500", `--app=${url}`]*/, {
         detached: true  // we don't want chrome to crash if our app crashes!
     })
 });
@@ -57,58 +57,81 @@ class App {
         console.log(text);
     }
 
-    doSomethingThenAlert(alertCb) {
+    doSomethingThenAlert(cbObj) {
         console.log("doSomething...");
         setTimeout(() => {
             console.log("...then alert!");
-            alertCb();
+            cbObj.alert("stuff the backend sent");
+            cbObj.alert2("stuff the backend sent");
         }, 1000)
     };
+
+    runShellCommand1(cb) {
+        performShellCommandInAppDir("doSomething.bat", [], cb)
+    }
 }
 
 /***********************************************
  * Utility functions.
  ***********************************************/
 
+function provideMissingCallbacks(cb) {
+    if (cb == null) {
+        cb = {}
+    }
+    
+    if (cb.failed == null)
+        cb.failed = () => {};
+    if (cb.started == null)
+        cb.started= () => {};
+    if (cb.completed == null)
+        cb.completed= () => {};
+    if (cb.stdout == null)
+        cb.stdout= () => {};
+    if (cb.stderr == null)
+        cb.stderr= () => {};
+    
+    return cb;
+}
+
 /**
- * @param {*} action the action to consider
- * For example:
- * {
- *  type: "COMMAND",
- *  executable: "test.bat",
- *  args: [],
- * }
- * @param {*} ws the websocket connection that received the action
- * and will be used to emit responses.
+ * Execute a shell command only if it is located within the working directory.
+ * @param executable
+ * @param args
+ * @param cb the object with callbacks.
  */
-function maybePerformShellCommand(action, ws) {
+function performShellCommandInAppDir(executable, args, cb) {
+
+    cb = provideMissingCallbacks(cb);
 
     let executablePath = path.normalize(
-        path.join(__dirname, action.executable)
+        path.join(__dirname, executable)
     );
 
     if (path.isAbsolute(executablePath) && executablePath.startsWith(__dirname)) {
         fs.access(executablePath, fs.constants.R_OK, function (err) {
             if (err == null) {
-                performShellCommandInNewShell(executablePath, action.args, ws);
+                performShellCommandInNewShell(executablePath, args, cb);
             } else {
                 console.error("Unable to access executable: " + executablePath);
-                ws.send(JSON.stringify({
-                    type: "COMMAND_FAILED",
-                    message: "Unable to access executable: " + executablePath
-                }))
+                cb.failed("Unable to access executable: " + executablePath);
             }
         });
     } else {
         console.error("Bad executable path: " + executablePath);
-        ws.send(JSON.stringify({
-            type: "COMMAND_FAILED",
-            message: "Unable to access executable." + executablePath
-        }))
+        cb.failed("Unable to access executable." + executablePath);
     }
 }
 
-function performShellCommandInNewShell(executablePath, args, ws) {
+/**
+ * Execute a shell command at the given path with the given args.
+ * @param executablePath
+ * @param args
+ * @param cb
+ */
+function performShellCommandInNewShell(executablePath, args, cb) {
+    cb = provideMissingCallbacks(cb);
+
     console.log(`Executing ${executablePath} with args ${args}`);
     let proc;
     try {
@@ -122,37 +145,24 @@ function performShellCommandInNewShell(executablePath, args, ws) {
         });
     } catch (e) {
         console.error("Error starting process for executable:", executablePath, e);
-        ws.send(JSON.stringify({
-            type: "COMMAND_FAILED",
-            message: "Error starting process for executable:" + executablePath
-        }));
+        cb.failed("Error starting process for executable:" + executablePath);
         return;
     }
 
-    console.log(`Started Process PID ${proc.pid} at ${new Date()}`)
-    ws.send(JSON.stringify({
-        type: "COMMAND_STARTED",
-    }));
+    console.log(`Started Process PID ${proc.pid} at ${new Date()}`);
+    cb.started();
 
     proc.on("close", function () {
         console.log(`Completed Process PID ${proc.pid} at ${new Date()}`);
-        ws.send(JSON.stringify({
-            type: "COMMAND_COMPLETED"
-        }));
+        cb.completed();
     });
 
     proc.stdout.on("data", function (data) {
-        ws.send(JSON.stringify({
-            type: "COMMAND_STDOUT",
-            data: data.toString()
-        }))
+        cb.stdout(data.toString());
     });
 
     proc.stderr.on("data", function (data) {
-        ws.send(JSON.stringify({
-            type: "COMMAND_STDERR",
-            data: data.toString()
-        }))
+        cb.stderr(data.toString());
     });
 }
 
@@ -180,13 +190,23 @@ wss.on('connection', function connection(ws, req) {
     clients.push(1);
 
     let messageBus = new MessageBus();
-    messageBus.send = message => ws.send(message);
+    messageBus.send = message => {
+        try {
+            ws.send(message);
+        } catch (e) {
+            console.log(e);
+        }
+    };
     messageBus.subscriber = new App();
 
     ws.on('message', function incoming(message) {
         console.log("received message...", message);
 
-        messageBus.receive(message);
+        try {
+            messageBus.receive(message);
+        } catch (e) {
+            console.log(e);
+        }
     });
 
     // we only want this

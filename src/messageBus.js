@@ -112,53 +112,71 @@ class MessageBus {
      * into first-class JavaScript functions which actually
      * point to the other message bus.
      *
-     * @param arrArgs
+     * @param arrArgDefs
      * @param functionLibrary
      * @return {Array}
      * @private
      */
-    _hydrateArgs(arrArgs, functionLibrary) {
+    _hydrateArgs(arrArgDefs, functionLibrary) {
         // just accepting a function argument right now.
         let args = [];
-        arrArgs.forEach(objArg => {
-            var arg = null;
-            const self = this;
-            switch (objArg.type) {
-                case "function":
-                    arg = function () {
-                        let dehydratedArgs = self._dehydrateArgs(arguments);
-
-                        let message = {
-                            type: "function",
-                            name: objArg.name,
-                            args: dehydratedArgs
-                        };
-
-                        let messageJson = JSON.stringify(message);
-
-                        self._send(messageJson);
-                    };
-                    break;
-                case "string":
-                    arg = String(objArg.value);
-                    break;
-                case "number":
-                    arg = Number(objArg.value);
-                    break;
-                case "boolean":
-                    arg = Boolean(objArg.value);
-                    break;
-                case "json":
-                    arg = JSON.parse(objArg.value);
-                    break;
-                default:
-                    throw new Error("Unhandled argument type: " + objArg.type);
-            }
+        arrArgDefs.forEach(argDef => {
+            var arg = this._hydrateArg(argDef);
             args.push(arg)
         });
 
         // now we have the args!
         return args;
+    }
+
+    /**
+     * Take a single argument definition and hydrate it into
+     * an actual JS object instance.
+     * @param argDef
+     * @private
+     */
+    _hydrateArg(argDef) {
+        const self = this;
+        switch (argDef.type) {
+            case "function":
+                return function () {
+                    let dehydratedArgs = self._dehydrateArgs(arguments);
+
+                    let message = {
+                        type: "function",
+                        name: argDef.name,
+                        args: dehydratedArgs
+                    };
+
+                    let messageJson = JSON.stringify(message);
+
+                    self._send(messageJson);
+                };
+            case "string":
+                return String(argDef.value);
+            case "number":
+                return Number(argDef.value);
+            case "boolean":
+                return Boolean(argDef.value);
+            case "json":
+                return JSON.parse(argDef.value);
+            case "object":
+                let objArg = {};
+                for (let prop in argDef.properties) {
+                    if (argDef.properties.hasOwnProperty(prop)) {
+                        objArg[prop] = this._hydrateArg(argDef.properties[prop]);
+                    }
+                }
+                return objArg;
+            case "array":
+                let arrArg = [];
+                argDef.elements.forEach(element => {
+                    arrArg.push(this._hydrateArg(element));
+                });
+                return arrArg;
+            default:
+                throw new Error("Unhandled argument type: " + argDef.type);
+        }
     }
 
     /**
@@ -173,61 +191,78 @@ class MessageBus {
         let dehydratedArgs = [];
         for (let i = 0; i < jsObjArgs.length; i++) {
             let arg = jsObjArgs[i];
-            if (typeof arg === "string") {
-                dehydratedArgs.push({
-                    type: "string",
-                    value: String(arg)
-                });
-            } else if (typeof arg === "function") {
-                // store a pointer to the function in the function lib
-                let functionPointerName = "f@" + this._functionPointerCounter;
-                this._functionPointerCounter++;
-                this._functionPointerLib[functionPointerName] = arg;
-                dehydratedArgs.push({
-                    type: "function",
-                    name: functionPointerName
-                });
-            } else if (typeof arg === "number") {
-                dehydratedArgs.push({
-                    type: "number",
-                    value: arg
-                });
-            } else if (typeof arg === "boolean") {
-                dehydratedArgs.push({
-                    type: "boolean",
-                    value: arg
-                })
-            } else if (typeof arg === "object") {
-                dehydratedArgs.push({
-                    type: "json",
-                    value: JSON.stringify(arg)
-                })
-            } else {
-                throw new Error("Unsupported argument type for arg: " + arg)
-            }
+            let dehydratedArg = this._dehydrateArg(arg);
+            dehydratedArgs.push(dehydratedArg);
         }
         return dehydratedArgs;
     }
-}
 
-/**
- * This is an in-memory implementation.
- * It directly invokes the other messageBus's event handling
- * by directly calling MessageBus#onMessage.
- */
-function inMemoryPublisherImpl(otherMessageBus) {
-    function send(message) {
-        // simulate network latency
-        setTimeout(() => {
-            console.log(this._id + " sending message", message);
-            otherMessageBus.receive(message);
-        }, 500);
+    /**
+     * Take a single actual arg instance and turn it into a single definition.
+     * @param arg
+     * @private
+     */
+    _dehydrateArg(arg) {
+        if (typeof arg === "string") {
+            return ({
+                type: "string",
+                value: String(arg)
+            });
+        } else if (typeof arg === "function") {
+            // store a pointer to the function in the function lib
+            let functionPointerName = "f@" + this._functionPointerCounter;
+            this._functionPointerCounter++;
+            this._functionPointerLib[functionPointerName] = arg;
+            return ({
+                type: "function",
+                name: functionPointerName
+            });
+        } else if (typeof arg === "number") {
+            return ({
+                type: "number",
+                value: arg
+            });
+        } else if (typeof arg === "boolean") {
+            return ({
+                type: "boolean",
+                value: arg
+            })
+        } else if (typeof arg === "object") {
+
+            if (arg.constructor.name === "Array") {
+                let argDef = {
+                    type: "array",
+                    elements: [],
+                };
+
+                arg.forEach(element => {
+                    argDef.elements.push(this._dehydrateArg(element));
+                });
+
+                return argDef;
+            } else {
+                let argDef = {
+                    type: "object",
+                    properties: {},
+                };
+
+                for (let prop in arg) {
+                    if (arg.hasOwnProperty(prop)) {
+                        argDef.properties[prop] = this._dehydrateArg(arg[prop]);
+                    }
+                }
+
+                return argDef;
+            }
+
+            // return ({
+            //     type: "json",
+            //     value: JSON.stringify(arg)
+            // })
+        } else {
+            throw new Error("Unsupported argument type for arg: " + arg)
+        }
     }
-
-    return send;
 }
 
-module.exports = {
-    MessageBus: MessageBus,
-    inMemoryPublisherImpl: inMemoryPublisherImpl,
-};
+module.exports = MessageBus;

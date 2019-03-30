@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <title>Mumbo App</title>
     <meta charset="utf-8">
@@ -11,70 +10,112 @@
     <script crossorigin src="https://unpkg.com/react-dom@16/umd/react-dom.development.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/6.21.1/babel.min.js"></script>
     <script src="/static/messageBus.js"></script>
+    <!----------------------------------------------------------------------------------------->
+    <!----------------------------------------------------------------------------------------->
+    <!-----------------------      FRONT END APPLICATION FUNCTIONS           ------------------>
+    <!----------------------------------------------------------------------------------------->
+    <!----------------------------------------------------------------------------------------->
     <script>
-        var app;
+        var backend;
+
         /**
          * These are the front end application functions.
          */
         function println() {
-            app.println("stuff");
+            backend.println("stuff");
         }
 
         function doSomethingThenAlert() {
-            app.doSomethingThenAlert(() => {
-                alert("Alert!");
+            backend.doSomethingThenAlert({
+                alert: (text) => {
+                    alert(text);
+                },
+                alert2: (text) => {
+                    alert("alert2:" + text);
+                }
+            });
+        }
+
+        function runShellCommand1() {
+            backend.runShellCommand1({
+                started: function () {
+                    console.log("started.");
+                },
+
+                completed: function () {
+                    console.log("completed.");
+                },
+
+                failed: function () {
+                    console.log("failed.");
+                }
             });
         }
     </script>
-    <script>
-        /**
-         * Connect the front-end to the back end via websocket.
-         * Sets the "app" variable.
-         */
-        function initWs() {
-            // build url
-            let key = new URLSearchParams(window.location.search).get("k");
-            let protocol = (window.location.protocol === "https:") ? "wss" : "ws";
-            let url = `${protocol}://${window.location.host}/ws/${key}`;
 
-            // connect to back-end websocket.
-            console.log("Connecting to server: ", url);
-            let ws = new WebSocket(url);
 
-            // build message bus and connect front-end to back-end.
-            let messageBus = new MessageBus();
-            messageBus.send = (message) => ws.send(message);
-            ws.onmessage = function (message) {
-                console.log("received message", message);
-                messageBus.receive(message.data);
-            };
+    <!----------------------------------------------------------------------------------------->
+    <!----------------------------------------------------------------------------------------->
+    <!-----------------------              REACT APPLICATION UI              ------------------>
+    <!----------------------------------------------------------------------------------------->
+    <!----------------------------------------------------------------------------------------->
 
-            // set global variable for back-end app.
-            app = messageBus.publisher;
+    <script type="text/babel">
+        class Greeting extends React.Component {
+            render() {
+                return (
+                    <div>
+                        <div>Hello world</div>
+                        <button onClick={println}>Println!</button>
+                        <button onClick={doSomethingThenAlert}>Do Something Then Alert!</button>
+                        <button onClick={runShellCommand1}>Run Bat 1</button>
+                    </div>
+                );
+            }
         }
     </script>
 </head>
 
+<!----------------------------------------------------------------------------------------->
+<!----------------------------------------------------------------------------------------->
+<!-----------------------              HTML APPLICATION UI               ------------------>
+<!----------------------------------------------------------------------------------------->
+<!----------------------------------------------------------------------------------------->
+
 <body>
-<div id="root"/>
-<script type="text/babel">
-    class Greeting extends React.Component {
-        render() {
-            return (
-                <div>
-                    <div>Hello world</div>
-                    <button onClick={println}>Println!</button>
-                    <button onClick={doSomethingThenAlert}>Do Something Then Alert!</button>
-                </div>
-            );
-        }
+<div id="root"></div>
+<script>
+    /**
+     * Connect the front-end to the back end via websocket.
+     * Sets the "backend" variable.
+     */
+    function initWs() {
+        // build url
+        let key = new URLSearchParams(window.location.search).get("k");
+        let protocol = (window.location.protocol === "https:") ? "wss" : "ws";
+        let url = `${protocol}://${window.location.host}/ws/${key}`;
+
+        // connect to back-end websocket.
+        console.log("Connecting to server: ", url);
+        let ws = new WebSocket(url);
+
+        // build message bus and connect front-end to back-end.
+        let messageBus = new MessageBus();
+        messageBus.send = (message) => ws.send(message);
+        ws.onmessage = function (message) {
+            console.log("received message", message);
+            messageBus.receive(message.data);
+        };
+
+        // set global variable for back-end app.
+        backend = messageBus.publisher;
     }
 </script>
 <script type="text/babel">
-    ReactDOM.render(
-        <Greeting/>,
-        document.getElementById('root')
-    );
+    /**
+     * Load React and connect to the backend.
+     */
+    ReactDOM.render(<Greeting/>, document.getElementById('root'));
     initWs();
 </script>
 </body>
