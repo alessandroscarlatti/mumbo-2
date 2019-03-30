@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Mumbo App</title>
+    <meta charset="utf-8">
+    <link rel="icon" href="/static/favicon.png" type="image/png" sizes="64x64">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.2.1/css/bootstrap.min.css">
+    <script crossorigin src="https://unpkg.com/react@16/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@16/umd/react-dom.development.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/6.21.1/babel.min.js"></script>
+    <script src="/static/messageBus.js"></script>
+    <script>
+        var app;
+        /**
+         * These are the front end application functions.
+         */
+        function println() {
+            app.println("stuff");
+        }
+
+        function doSomethingThenAlert() {
+            app.doSomethingThenAlert(() => {
+                alert("Alert!");
+            });
+        }
+    </script>
+    <script>
+        /**
+         * Connect the front-end to the back end via websocket.
+         * Sets the "app" variable.
+         */
+        function initWs() {
+            // build url
+            let key = new URLSearchParams(window.location.search).get("k");
+            let protocol = (window.location.protocol === "https:") ? "wss" : "ws";
+            let url = `${protocol}://${window.location.host}/ws/${key}`;
+
+            // connect to back-end websocket.
+            console.log("Connecting to server: ", url);
+            let ws = new WebSocket(url);
+
+            // build message bus and connect front-end to back-end.
+            let messageBus = new MessageBus();
+            messageBus.send = (message) => ws.send(message);
+            ws.onmessage = function (message) {
+                console.log("received message", message);
+                messageBus.receive(message.data);
+            };
+
+            // set global variable for back-end app.
+            app = messageBus.publisher;
+        }
+    </script>
+</head>
+
+<body>
+<div id="root"/>
+<script type="text/babel">
+    class Greeting extends React.Component {
+        render() {
+            return (
+                <div>
+                    <div>Hello world</div>
+                    <button onClick={println}>Println!</button>
+                    <button onClick={doSomethingThenAlert}>Do Something Then Alert!</button>
+                </div>
+            );
+        }
+    }
+</script>
+<script type="text/babel">
+    ReactDOM.render(
+        <Greeting/>,
+        document.getElementById('root')
+    );
+    initWs();
+</script>
+</body>
+
+</html>
