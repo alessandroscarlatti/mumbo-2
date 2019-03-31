@@ -16,45 +16,55 @@
     <!----------------------------------------------------------------------------------------->
     <!----------------------------------------------------------------------------------------->
     <script>
-        var backend;
+        class App {
+            set server(server) {
+                this._server = server;
+            }
 
-        /**
-         * These are the front end application functions.
-         */
-        function println() {
-            backend.println("stuff");
+            doSomething() {
+                alert("Autoalert");
+            }
+
+            /**
+             * These are the front end application functions.
+             */
+            println() {
+                this._server.println("stuff");
+            }
+
+            doSomethingThenAlert() {
+                this._server.doSomethingThenAlert({
+                    alert: (text) => {
+                        alert(text);
+                    },
+                    alert2: (text) => {
+                        alert("alert2:" + text);
+                    }
+                });
+            }
+
+            runShellCommand1() {
+                this._server.runShellCommand1({
+                    started: function () {
+                        console.log("started.");
+                    },
+
+                    stdout: function (text) {
+                        console.log("STDOUT", text);
+                    },
+
+                    completed: function () {
+                        console.log("completed.");
+                    },
+
+                    failed: function () {
+                        console.log("failed.");
+                    }
+                });
+            }
         }
 
-        function doSomethingThenAlert() {
-            backend.doSomethingThenAlert({
-                alert: (text) => {
-                    alert(text);
-                },
-                alert2: (text) => {
-                    alert("alert2:" + text);
-                }
-            });
-        }
-
-        function runShellCommand1() {
-            backend.runShellCommand1({
-                started: function () {
-                    console.log("started.");
-                },
-
-                stdout: function (text) {
-                    console.log("STDOUT", text);
-                },
-
-                completed: function () {
-                    console.log("completed.");
-                },
-
-                failed: function () {
-                    console.log("failed.");
-                }
-            });
-        }
+        var app = new App();
     </script>
 
 
@@ -70,9 +80,9 @@
                 return (
                     <div>
                         <div>Hello world</div>
-                        <button onClick={println}>Println!</button>
-                        <button onClick={doSomethingThenAlert}>Do Something Then Alert!</button>
-                        <button onClick={runShellCommand1}>Run Bat 1</button>
+                        <button onClick={app.println.bind(app)}>Println!</button>
+                        <button onClick={app.doSomethingThenAlert.bind(app)}>Do Something Then Alert!</button>
+                        <button onClick={app.runShellCommand1.bind(app)}>Run Bat 1</button>
                     </div>
                 );
             }
@@ -111,8 +121,9 @@
             messageBus.receive(message.data);
         };
 
-        // set global variable for back-end app.
-        backend = messageBus.publisher;
+        // inject the server reference
+        app.server = messageBus.publisher;
+        messageBus.subscriber = app;
     }
 </script>
 <script type="text/babel">

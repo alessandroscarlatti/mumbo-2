@@ -1,6 +1,14 @@
 const {performShellCommandInAppDir} = require("./utils");
 
 class App {
+    set client(client) {
+        this._client = client;
+
+        setTimeout(() => {
+            this._client.doSomething();
+        }, 2000)
+    }
+
     println(text) {
         console.log(text);
     }

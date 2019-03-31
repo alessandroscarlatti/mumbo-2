@@ -87,7 +87,10 @@ wss.on('connection', function connection(ws, req) {
     };
 
     // connect the application-specific functions
-    messageBus.subscriber = new AppClass();
+    let app = new AppClass();
+    messageBus.subscriber = app;
+    app.client = messageBus.publisher;
+
 
     ws.on('message', function incoming(message) {
         console.log("received message...", message);
